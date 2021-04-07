@@ -16,6 +16,23 @@ extension Resolver: ResolverRegistering {
     }
 }
 
+
+// 这里, 定义了一些协议.
+
+protocol XYZFetching {
+    var name: String { get }
+    func string() -> String
+}
+
+protocol XYZUpdating {
+    var name: String { get }
+    func update()
+}
+
+protocol XYZSessionProtocol {
+    var id: UUID { get }
+}
+
 class XYZViewModel {
 
     var editMode = true
@@ -32,16 +49,6 @@ class XYZViewModel {
 
     var name: String { return "XYZViewModel" }
 
-}
-
-protocol XYZFetching {
-    var name: String { get }
-    func string() -> String
-}
-
-protocol XYZUpdating {
-    var name: String { get }
-    func update()
 }
 
 class XYZCombinedService: XYZFetching, XYZUpdating {
@@ -70,10 +77,6 @@ class XYZGraphService {
         self.session1 = session1
         self.session2 = session2
     }
-}
-
-protocol XYZSessionProtocol {
-    var id: UUID { get }
 }
 
 class XYZSessionService: XYZSessionProtocol {

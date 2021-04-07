@@ -25,12 +25,15 @@ class ResolverScopeNameTests: XCTestCase {
     func testResolverScopeNameGraph() {
         resolver.register(name: "Fred") { XYZNameService("Fred") }
         resolver.register(name: "Barney") { XYZNameService("Barney") }
+        // let temp = resolver.optional(name: "Fred") 会报错, Generic parameter 'Service' could not be inferred
+        // Swift 里面, 通过返回值来确定泛型类型, 是一个很重要的一点, 例如, 闭包的返回值, 来确定接受闭包的函数的返回值的类型
         let service1: XYZNameService? = resolver.optional(name: "Fred")
         let service2: XYZNameService? = resolver.optional(name: "Barney")
         let service3: XYZNameService? = resolver.optional(name: "Barney")
         XCTAssertNotNil(service1)
         XCTAssertNotNil(service2)
         XCTAssertNotNil(service3)
+        
         if let s1 = service1, let s2 = service2, let s3 = service3 {
             XCTAssert(s1.name == "Fred")
             XCTAssert(s2.name == "Barney")

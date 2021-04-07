@@ -10,9 +10,12 @@ import XCTest
 @testable import Resolver
 
 extension Resolver.Name {
-    static let fred = Self("Fred")
+    static let fred = Resolver.Name("Fred")
     static let barney = Self("Barney")
 }
+
+// 可以看到, 各个测试用例都很简单, 都是对于自己类外部接口的测试.
+// 测试用例的简单性, 建立在类在设计时, 能够有良好的设计上.
 
 class ResolverNameTests: XCTestCase {
 
@@ -29,6 +32,7 @@ class ResolverNameTests: XCTestCase {
 
     func testResolverValidNameStrings() {
 
+        // 测试 XYZNameService 的生成器, 和 name 进行了挂钩
         resolver.register(name: "Fred") { XYZNameService("Fred") }
         resolver.register(name: "Barney") { XYZNameService("Barney") }
 

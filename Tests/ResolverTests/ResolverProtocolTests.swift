@@ -23,6 +23,7 @@ class ResolverProtocolTests: XCTestCase {
     }
 
     func testProtocolWithExplicitResolution() {
+        // 这应该是这个依赖注册最有价值的地方, 就是对于 protocol 的配置.
         resolver.register { XYZCombinedService() as XYZFetching }
         let service: XYZFetching? = resolver.resolve(XYZFetching.self)
         XCTAssertNotNil(service)
