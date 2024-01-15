@@ -113,3 +113,111 @@ This works with classes, structs, and protocols, though there are a few special 
 
 You can also register [value types](Names.md), though that too has a few special considerations.
 
+
+
+Resolver: 注册
+
+简介
+
+如介绍中所提到的，为了让 Resolver 能够解析对特定服务的请求，您首先需要注册一个工厂，该工厂知道如何实例化该服务的实例。
+
+swift
+Copy code
+Resolver.register { NetworkService() }
+Resolver将在每次需要解析NetworkService实例时自动使用该工厂。
+
+swift
+Copy code
+class MyViewModel {
+    @Injected var network: NetworkService
+}
+相当简单，对吧？我们需要注册我们的服务。
+
+但是我们把所有这些注册放在哪里呢？
+
+嗯，使用 Resolver、Swinject 和其他 DI 系统时，向项目中添加额外的“注入”文件以支持代码库中特定部分需要的依赖关系是一种常见的做法。
+
+让我们首先添加整个应用程序的主注入文件。
+
+添加 AppDelegate 注入文件
+
+在项目中添加一个名为 AppDelegate+Injection.swift 的文件，并添加以下代码：
+
+swift
+Copy code
+import Resolver
+
+extension Resolver: ResolverRegistering {
+    public static func registerAllServices() {
+
+    }
+}
+如果使用的是框架、CocoaPods 或 Carthage，您将需要添加 import Resolver 行。如果直接将 Resolver.swift 添加到项目中，请删除该行。
+
+Resolver在第一次被要求解析特定服务时自动调用 registerAllServices 函数。但是，目前它并没有太大用处，直到您实际注册了一些类。
+
+请注意，我们将我们的注册功能直接添加到 Resolver 命名空间中。这使得我们的注册工厂可以直接访问该命名空间中包含的注册和解析功能（例如 register、resolve 等）。
+
+添加注入文件<a name=files></a>
+
+如上所述，我们向项目中添加额外的“注入”文件以支持代码库中特定部分需要的依赖关系。
+
+假设您的项目文件夹中有一个名为 "NetworkServices" 的组，并且您希望注册 Resolver 使用的一些服务。
+
+1. 添加您自己的注册文件。
+转到 NetworkServices 文件夹并添加一个名为：NetworkServices+Injection.swift 的 Swift 文件，然后将以下内容添加到该文件中...
+
+swift
+Copy code
+#import Resolver
+
+extension Resolver {
+    public static func registerMyNetworkServices() {
+
+    }
+}
+2. 更新主文件。
+现在，返回到 AppDelegate+Injection.swift 文件，并引用 registerMyNetworkServices。
+
+swift
+Copy code
+extension Resolver: ResolverRegistering {
+    public static func registerAllServices() {
+        registerMyNetworkServices()
+    }
+}
+Resolver将自动调用 registerAllServices，而该函数又依次调用您自己的注册函数。
+
+3. 添加您自己的注册。
+现在，所有设置已经完成，返回到 NetworkServices+Injection.swift 并添加您自己的注册。
+
+只是作为一个例子：
+
+swift
+Copy code
+import Resolver
+
+extension Resolver {
+
+    public static func registerMyNetworkServices() {
+
+        // 注册协议 XYZFetching 和 XYZUpdating，并创建实现对象
+        register { XYZCombinedService() }
+            .implements(XYZFetching.self)
+            .implements(XYZUpdating.self)
+
+        // 注册 XYZNetworkService 并在工厂闭包中返回实例
+        register { XYZNetworkService(session: resolve()) }
+
+        // 注册 XYZSessionService 并在工厂闭包中返回实例
+        register { XYZSessionService() }
+    }
+    
+}
+就是这样。 Resolver 使用 Swift 类型推断 来自动确定并注册由注册工厂返回的对象的类型。
+
+对于 XYZNetworkService，Resolver 用于推断初始化 XYZNetworkService 所需的 session 参数的类型。
+
+这适用于类、结构和协议，尽管对于 协议 有一些特殊情况和注意事项。
+
+您还可以注册 值类型，不过这也有一些特殊的考虑因素。

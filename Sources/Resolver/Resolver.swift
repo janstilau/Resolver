@@ -1,29 +1,3 @@
-//
-// Resolver.swift
-//
-// GitHub Repo and Documentation: https://github.com/hmlongco/Resolver
-//
-// Copyright © 2017 Michael Long. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-//
-
 #if os(iOS)
 import UIKit
 import SwiftUI
@@ -54,9 +28,9 @@ extension Resolving {
 /// Resolver is a Dependency Injection registry that registers Services for later resolution and
 /// injection into newly constructed instances.
 public final class Resolver {
-
+    
     // MARK: - Defaults
-
+    
     /// Default registry used by the static Registration functions.
     public static var main: Resolver = Resolver()
     /// Default registry used by the static Resolution functions and by the Resolving protocol.
@@ -65,9 +39,9 @@ public final class Resolver {
     public static var defaultScope: ResolverScope = .graph
     /// Internal scope cache used for .scope(.container)
     public lazy var cache: ResolverScope = ResolverScopeCache()
-
+    
     // MARK: - Lifecycle
-
+    
     /// Initialize with optional child scope.
     /// If child is provided this container is searched for registrations first, then any of its children.
     public init(child: Resolver? = nil) {
@@ -75,13 +49,13 @@ public final class Resolver {
             self.childContainers.append(child)
         }
     }
-
+    
     /// Initializer which maintained Resolver 1.0's "parent" functionality even when multiple child scopes were added in 1.4.3.
     @available(swift, deprecated: 5.0, message: "Please use Resolver(child:).")
     public init(parent: Resolver) {
         self.childContainers.append(parent)
     }
-
+    
     /// Adds a child container to this container. Children will be searched if this container fails to find a registration factory
     /// that matches the desired type.
     public func add(child: Resolver) {
@@ -89,7 +63,7 @@ public final class Resolver {
         defer { lock.unlock() }
         self.childContainers.append(child)
     }
-
+    
     /// Call function to force one-time initialization of the Resolver registries. Usually not needed as functionality
     /// occurs automatically the first time a resolution function is called.
     public final func registerServices() {
@@ -97,7 +71,7 @@ public final class Resolver {
         defer { lock.unlock() }
         registrationCheck()
     }
-
+    
     /// Call function to force one-time initialization of the Resolver registries. Usually not needed as functionality
     /// occurs automatically the first time a resolution function is called.
     public static var registerServices: (() -> Void)? = {
@@ -105,7 +79,7 @@ public final class Resolver {
         defer { lock.unlock() }
         registrationCheck()
     }
-
+    
     /// Called to effectively reset Resolver to its initial state, including recalling registerAllServices if it was provided. This will
     /// also reset the three known caches: application, cached, shared.
     public static func reset() {
@@ -118,9 +92,9 @@ public final class Resolver {
         ResolverScope.shared.reset()
         registrationNeeded = true
     }
-
+    
     // MARK: - Service Registration
-
+    
     /// Static shortcut function used to register a specifc Service type and its instantiating factory method.
     ///
     /// - parameter type: Type of Service being registered. Optional, may be inferred by factory result type.
@@ -134,7 +108,7 @@ public final class Resolver {
                                          factory: @escaping ResolverFactory<Service>) -> ResolverOptions<Service> {
         return main.register(type, name: name, factory: factory)
     }
-
+    
     /// Static shortcut function used to register a specific Service type and its instantiating factory method.
     ///
     /// - parameter type: Type of Service being registered. Optional, may be inferred by factory result type.
@@ -148,7 +122,7 @@ public final class Resolver {
                                          factory: @escaping ResolverFactoryResolver<Service>) -> ResolverOptions<Service> {
         return main.register(type, name: name, factory: factory)
     }
-
+    
     /// Static shortcut function used to register a specific Service type and its instantiating factory method with multiple argument support.
     ///
     /// - parameter type: Type of Service being registered. Optional, may be inferred by factory result type.
@@ -162,7 +136,7 @@ public final class Resolver {
                                          factory: @escaping ResolverFactoryArgumentsN<Service>) -> ResolverOptions<Service> {
         return main.register(type, name: name, factory: factory)
     }
-
+    
     /// Registers a specific Service type and its instantiating factory method.
     ///
     /// - parameter type: Type of Service being registered. Optional, may be inferred by factory result type.
@@ -182,7 +156,7 @@ public final class Resolver {
         add(registration: registration, with: key, name: name)
         return ResolverOptions(registration: registration)
     }
-
+    
     /// Registers a specific Service type and its instantiating factory method.
     ///
     /// - parameter type: Type of Service being registered. Optional, may be inferred by factory result type.
@@ -202,7 +176,7 @@ public final class Resolver {
         add(registration: registration, with: key, name: name)
         return ResolverOptions(registration: registration)
     }
-
+    
     /// Registers a specific Service type and its instantiating factory method with multiple argument support.
     ///
     /// - parameter type: Type of Service being registered. Optional, may be inferred by factory result type.
@@ -222,9 +196,9 @@ public final class Resolver {
         add(registration: registration, with: key, name: name)
         return ResolverOptions(registration: registration)
     }
-
+    
     // MARK: - Service Resolution
-
+    
     /// Static function calls the root registry to resolve a given Service type.
     ///
     /// - parameter type: Type of Service being resolved. Optional, may be inferred by assignment result type.
@@ -241,7 +215,7 @@ public final class Resolver {
         }
         fatalError("RESOLVER: '\(Service.self):\(name?.rawValue ?? "NONAME")' not resolved. To disambiguate optionals use resolver.optional().")
     }
-
+    
     /// Resolves and returns an instance of the given Service type from the current registry or from its
     /// parent registries.
     ///
@@ -260,7 +234,7 @@ public final class Resolver {
         }
         fatalError("RESOLVER: '\(Service.self):\(name?.rawValue ?? "NONAME")' not resolved. To disambiguate optionals use resolver.optional().")
     }
-
+    
     /// Static function calls the root registry to resolve an optional Service type.
     ///
     /// - parameter type: Type of Service being resolved. Optional, may be inferred by assignment result type.
@@ -278,7 +252,7 @@ public final class Resolver {
         }
         return nil
     }
-
+    
     /// Resolves and returns an optional instance of the given Service type from the current registry or
     /// from its parent registries.
     ///
@@ -297,9 +271,9 @@ public final class Resolver {
         }
         return nil
     }
-
+    
     // MARK: - Internal
-
+    
     /// Internal function searches the current and child registries for a ResolverRegistration<Service> that matches
     /// the supplied type and name.
     private final func lookup<Service>(_ type: Service.Type, name: Resolver.Name?) -> ResolverRegistration<Service>? {
@@ -318,7 +292,7 @@ public final class Resolver {
         }
         return nil
     }
-
+    
     /// Internal function adds a new registration to the proper container.
     private final func add<Service>(registration: ResolverRegistration<Service>, with key: Int, name: Resolver.Name?) {
         if let name = name?.rawValue {
@@ -327,7 +301,7 @@ public final class Resolver {
             typedRegistrations[key] = registration
         }
     }
-
+    
     private let NONAME = "*"
     private let lock = Resolver.lock
     private var childContainers: [Resolver] = []
@@ -360,7 +334,7 @@ extension Resolver {
 
 /// Resolver Service Name Space Support
 extension Resolver {
-
+    
     /// Internal class used by Resolver for typed name space support.
     public struct Name: ExpressibleByStringLiteral, Hashable, Equatable {
         public let rawValue: String
@@ -381,17 +355,17 @@ extension Resolver {
             hasher.combine(rawValue)
         }
     }
-
+    
 }
 
 /// Resolver Multiple Argument Support
 extension Resolver {
-
+    
     /// Internal class used by Resolver for multiple argument support.
     public struct Args {
-
+        
         private var args: [String:Any?]
-
+        
         public init(_ args: Any?) {
             if let args = args as? Args {
                 self.args = args.args
@@ -401,37 +375,37 @@ extension Resolver {
                 self.args = ["" : args]
             }
         }
-
-        #if swift(>=5.2)
+        
+#if swift(>=5.2)
         public func callAsFunction<T>() -> T {
             assert(args.count == 1, "argument order indeterminate, use keyed arguments")
             return (args.first?.value as? T)!
         }
-
+        
         public func callAsFunction<T>(_ key: String) -> T {
             return (args[key] as? T)!
         }
-        #endif
-
+#endif
+        
         public func optional<T>() -> T? {
             return args.first?.value as? T
         }
-
+        
         public func optional<T>(_ key: String) -> T? {
             return args[key] as? T
         }
-
+        
         public func get<T>() -> T {
             assert(args.count == 1, "argument order indeterminate, use keyed arguments")
             return (args.first?.value as? T)!
         }
-
+        
         public func get<T>(_ key: String) -> T {
             return (args[key] as? T)!
         }
-
+        
     }
-
+    
 }
 
 // Registration Internals
@@ -458,13 +432,13 @@ public typealias ResolverFactoryMutatorArgumentsN<Service> = (_ resolver: Resolv
 
 /// A ResolverOptions instance is returned by a registration function in order to allow additional configuration. (e.g. scopes, etc.)
 public struct ResolverOptions<Service> {
-
+    
     // MARK: - Parameters
-
+    
     public var registration: ResolverRegistration<Service>
-
+    
     // MARK: - Fuctionality
-
+    
     /// Indicates that the registered Service also implements a specific protocol that may be resolved on
     /// its own.
     ///
@@ -478,7 +452,7 @@ public struct ResolverOptions<Service> {
         registration.resolver?.register(type.self, name: name) { r, args in r.resolve(Service.self, args: args) as? Protocol }
         return self
     }
-
+    
     /// Allows easy assignment of injected properties into resolved Service.
     ///
     /// - parameter block: Resolution block.
@@ -498,7 +472,7 @@ public struct ResolverOptions<Service> {
         }
         return self
     }
-
+    
     /// Allows easy assignment of injected properties into resolved Service.
     ///
     /// - parameter block: Resolution block that also receives resolution arguments.
@@ -518,7 +492,7 @@ public struct ResolverOptions<Service> {
         }
         return self
     }
-
+    
     /// Defines scope in which requested Service may be cached.
     ///
     /// - parameter block: Resolution block.
@@ -534,7 +508,7 @@ public struct ResolverOptions<Service> {
 
 /// ResolverRegistration base class provides storage for the registration keys, scope, and property mutator.
 public final class ResolverRegistration<Service> {
-
+    
     public let key: Int
     public let cacheKey: String
     
@@ -542,7 +516,7 @@ public final class ResolverRegistration<Service> {
     fileprivate var scope: ResolverScope = Resolver.defaultScope
     
     fileprivate weak var resolver: Resolver?
-
+    
     public init(resolver: Resolver, key: Int, name: Resolver.Name?, factory: @escaping ResolverFactoryAnyArguments<Service>) {
         self.resolver = resolver
         self.key = key
@@ -553,7 +527,7 @@ public final class ResolverRegistration<Service> {
         }
         self.factory = factory
     }
-
+    
     /// Called by Resolver containers to resolve a registration. Depending on scope may return a previously cached instance.
     public final func resolve(resolver: Resolver, args: Any?) -> Service? {
         return scope.resolve(registration: self, resolver: resolver, args: args)
@@ -568,7 +542,7 @@ public final class ResolverRegistration<Service> {
     public final func update(factory modifier: (_ factory: @escaping ResolverFactoryAnyArguments<Service>) -> ResolverFactoryAnyArguments<Service>) {
         self.factory = modifier(factory)
     }
-
+    
 }
 
 // Scopes
@@ -580,9 +554,9 @@ public protocol ResolverScopeType: AnyObject {
 }
 
 public class ResolverScope: ResolverScopeType {
-
+    
     // Moved definitions to ResolverScope to allow for dot notation access
-
+    
     /// All application scoped services exist for lifetime of the app. (e.g Singletons)
     public static let application = ResolverScopeCache()
     /// Proxy to container's scope. Cache type depends on type supplied to container (default .cache)
@@ -595,7 +569,7 @@ public class ResolverScope: ResolverScopeType {
     public static let shared = ResolverScopeShare()
     /// Unique services are created and initialized each and every time they're resolved.
     public static let unique = ResolverScope()
-
+    
     public init() {}
     
     /// Core scope resolution simply instantiates new instance every time it's called (e.g. .unique)
@@ -610,9 +584,9 @@ public class ResolverScope: ResolverScopeType {
 
 /// Cached services exist for lifetime of the app or until their cache is reset.
 public class ResolverScopeCache: ResolverScope {
-
+    
     public override init() {}
-
+    
     public override func resolve<Service>(registration: ResolverRegistration<Service>, resolver: Resolver, args: Any?) -> Service? {
         if let service = cachedServices[registration.cacheKey] as? Service {
             return service
@@ -623,19 +597,19 @@ public class ResolverScopeCache: ResolverScope {
         }
         return service
     }
-
+    
     public override func reset() {
         cachedServices.removeAll()
     }
-
+    
     fileprivate var cachedServices = [String : Any](minimumCapacity: 32)
 }
 
 /// Graph services are initialized once and only once during a given resolution cycle. This is the default scope.
 public final class ResolverScopeGraph: ResolverScope {
-
+    
     public override init() {}
-
+    
     public override final func resolve<Service>(registration: ResolverRegistration<Service>, resolver: Resolver, args: Any?) -> Service? {
         if let service = graph[registration.cacheKey] as? Service {
             return service
@@ -652,16 +626,16 @@ public final class ResolverScopeGraph: ResolverScope {
     }
     
     public override final func reset() {}
-
+    
     private var graph = [String : Any?](minimumCapacity: 32)
     private var resolutionDepth: Int = 0
 }
 
 /// Shared services persist while strong references to them exist. They're then deallocated until the next resolve.
 public final class ResolverScopeShare: ResolverScope {
-
+    
     public override init() {}
-
+    
     public override final func resolve<Service>(registration: ResolverRegistration<Service>, resolver: Resolver, args: Any?) -> Service? {
         if let service = cachedServices[registration.cacheKey]?.service as? Service {
             return service
@@ -672,15 +646,15 @@ public final class ResolverScopeShare: ResolverScope {
         }
         return service
     }
-
+    
     public override final func reset() {
         cachedServices.removeAll()
     }
-
+    
     private struct BoxWeak {
         weak var service: AnyObject?
     }
-
+    
     private var cachedServices = [String : BoxWeak](minimumCapacity: 32)
 }
 
@@ -846,7 +820,7 @@ public extension UIViewController {
             if initialize {
                 self.initialize = false
                 self.service = (container?.resolve(Service.self, name: name, args: args)
-                                    ?? Resolver.resolve(Service.self, name: name, args: args)) as AnyObject
+                                ?? Resolver.resolve(Service.self, name: name, args: args)) as AnyObject
             }
             return service as? Service
         }
