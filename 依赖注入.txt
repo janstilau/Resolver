@@ -1,0 +1,507 @@
+https://martinfowler.com/articles/injection.html
+
+控制容器和依赖注入模式的转换
+
+在Java社区中，出现了许多轻量级容器，它们帮助将来自不同项目的组件组装成一个协调的应用程序。在这些容器的背后，有一个通用的模式来执行装配，这个概念被称为“控制反转”。在本文中，我将深入探讨这种模式的工作原理，更具体地称为“依赖注入”，并将其与服务定位器进行对比。它们之间的选择不如将配置与使用分离的原则重要。
+
+设计
+
+对象协作设计
+
+应用程序架构
+
+企业Java世界中令人娱乐的一点是，有大量活动致力于构建替代主流J2EE技术的解决方案，其中许多是在开源中进行的。其中很多是对主流J2EE世界中繁重复杂性的反应，但其中许多也是在探索替代方案并提出创造性的想法。处理这个问题的一个常见问题是如何将不同项目的元素连接在一起：当由不同团队构建时，如何将这个Web控制器架构与那个数据库接口后端组合在一起，而这些团队之间几乎互不了解。许多框架尝试解决这个问题，有些甚至正在扩展提供从不同层组装组件的通用能力。这些通常被称为轻量级容器，例如PicoContainer和Spring。
+
+这些容器背后有许多有趣的设计原则，这些原则超越了这些特定的容器，事实上也超越了Java平台。在这里，我想开始探讨其中一些原则。我在示例中使用的是Java，但像我大部分的写作一样，这些原则同样适用于其他面向对象的环境，特别是.NET。
+
+组件和服务
+将元素连接在一起的主题几乎立即将我拖入围绕服务和组件这两个术语的混乱术语问题。您会很容易找到有关这些术语定义的长篇矛盾文章。对我来说，在这里我对这两个过载的术语的当前使用做出以下解释。
+
+我使用组件表示一块软件，旨在被应用程序使用，而这个应用程序超出了组件的编写者的控制。通过“无需更改”，我是指使用应用程序不会更改组件的源代码，尽管它们可以通过组件编写者允许的方式扩展组件的行为。
+
+服务与组件相似，因为它由外部应用程序使用。主要区别在于，我期望组件在本地使用（考虑jar文件、程序集、dll或源导入）。服务将通过某个远程接口（同步或异步，例如Web服务、消息系统、RPC或套接字）远程使用。
+
+在本文中，我大多使用服务这个词，但相同的逻辑也可以应用于本地组件。实际上，通常需要某种本地组件框架，以便轻松访问远程服务。但写“组件或服务”很烦人，而且服务目前更流行一些。
+
+一个天真的例子
+为了帮助使所有这一切更具体，我将使用一个运行中的示例来讨论所有这些。与我所有的示例一样，这是一个超级简单的例子；足够小，以至于不真实，但希望足以让您可视化正在发生的事情，而不会陷入真实示例的泥潭。
+
+在这个例子中，我正在编写一个组件，它提供由特定导演执导的电影列表。这个极其有用的功能由一个单一的方法实现。
+
+java
+Copy code
+class MovieLister...
+
+  public Movie[] moviesDirectedBy(String arg) {
+      List allMovies = finder.findAll();
+      for (Iterator it = allMovies.iterator(); it.hasNext();) {
+          Movie movie = (Movie) it.next();
+          if (!movie.getDirector().equals(arg)) it.remove();
+      }
+      return (Movie[]) allMovies.toArray(new Movie[allMovies.size()]);
+  }
+这个函数的实现极其天真，它极力要求一个查找器对象（我们稍后会讨论）返回它所知道的每一部电影。然后它只是在列表中搜索由特定导演执导的电影。我不打算修复这个极端天真的部分，因为它只是这篇文章的真正要点的脚手架。
+
+这篇文章的真正要点是这个查找器对象，或者更确切地说是我们如何将lister对象与特定的查找器对象连接起来。这是有趣的原因是我希望我的美妙的moviesDirectedBy方法完全独立于所有电影的存储方式。因此，该方法所做的只是引用一个查找器，而该查找器所做的只是知道如何响应findAll方法。我可以通过为查找器定义一个接口来实现这一点。
+
+java
+Copy code
+public interface MovieFinder {
+    List findAll();
+}
+现在所有这些都非常解耦，但在某个时刻，我必须提供一个具体的类来实际获取这些电影。在这种情况下，我将代码放在我的lister类的构造函数中。
+
+java
+Copy code
+class MovieLister...
+
+  private MovieFinder finder;
+  public MovieLister() {
+    finder = new ColonDelimitedMovieFinder("movies1.txt");
+  }
+实现类的名称来自于这样一个事实，即我从一个以冒号分隔的文本文件中获取我的列表。我会省略细节，毕竟这只是真实例子的脚手架。
+
+现在，如果我只是为自己使用这个类，那么一切都很好。但是，当我的朋友们对这个美妙的功能充满渴望并想要我的程序的副本时会发生什么？如果他们也将他们的电影清单存储在名为“movies1.txt”的冒号分隔的文本文件中，那一切都很美好。如果他们的电影文件有不同的名称，那么将文件名放在属性文件中就很容易了。但是如果他们以完全不同的方式存储他们的电影清单：SQL数据库、XML文件、Web服务或只是另一种文本文件格式呢？在这种情况下，我们需要一个不同的类来获取该数据。现在，因为我定义了一个MovieFinder接口，这不会改变我的moviesDirectedBy方法。但我仍然需要以某种方式将正确的查找器实现的实例放到位。
+
+图1显示了这种情况的依赖关系。MovieLister类依赖于MovieFinder接口和实现。我们更希望它只依赖于接口，但是如何制作一个与之一起工作的实例呢？
+
+在我的《P of EAA》一书中，我们将这种情况描述为插件。查找器的实现类在编译时未链接到程序中，因为我不知道我的朋友们将使用什么。相反，我们希望我的lister能与任何实现一起工作，并且该实现将在某个后来的时刻插入，超出了我的控制。问题是，我如何制作这个链接，以便我的lister类对实现类一无所知，但仍然可以与实例通信以完成其工作。
+
+将这扩展到一个真实的系统中，我们可能有数十个这样的服务和组件。在每种情况下，我们都可以通过通过接口与它们对话（如果组件没有考虑到接口，我们可以使用适配器），来抽象我们对这些组件的使用。但是，如果我们希望以不同的方式部署此系统，我们需要使用插件来处理与这些服务的交互，以便我们可以在不同的部署中使用不同的实现。
+
+因此，核心问题是我们如何将这些插件组装到应用程序中？这是这一新型轻量级容器面临的主要问题之一，普遍来说，它们都使用控制反转来解决这个问题。
+
+控制反转
+当这些容器谈论它们之所以如此有用是因为它们实现了“控制反转”时，我感到非常困惑。控制反转是框架的一个常见特征，因此说这些轻量级容器之所以特殊是因为它们使用了控制反转，就好像说我的汽车之所以特殊是因为它有轮子。
+
+问题是：“它们正在反转控制的哪个方面？”当我第一次接触控制反转时，它是在用户界面的主控制中。早期的用户界面由应用程序程序控制。您会有一系列命令，如“输入名称”，“输入地址”；您的程序会驱动提示，并为屏幕上的各个字段提供响应。对于图形（甚至是基于屏幕的）用户界面，UI框架将包含这个主循环，而您的程序将为屏幕上的各个字段提供事件处理程序。程序的主控制被反转，从您移到框架。
+
+对于这一新一代的容器，反转是关于它们如何查找插件实现的方式。在我的天真的例子中，lister通过直接实例化它来查找finder的实现。这使得finder不能成为插件。这些容器使用的方法是确保插件的任何用户都遵循一些约定，允许单独的装配模块将实现注入到lister中。
+
+因此，我认为我们需要为这种模式取一个更具体的名称。控制反转是一个太泛泛的术语，因此人们觉得它很令人困惑。因此，在与各种IoC倡导者进行了大量讨论后，我们决定使用“依赖注入”这个名称。
+
+我将从讨论各种形式的依赖注入开始，但我现在就指出，那不是将依赖从应用程序类移到插件实现的唯一方式。您可以使用Service Locator这种模式来做到这一点，我将在解释完依赖注入后讨论它。
+
+依赖注入的形式
+依赖注入的基本思想是有一个单独的对象，一个组装器，它使用适当的实现填充lister类中的字段，从而产生了类似于图2的依赖关系图。
+
+有三种主要的依赖注入风格。我使用的名称分别是构造函数注入、Setter 注入和接口注入。如果你在当前关于控制反转的讨论中阅读这些内容，你会听到它们被称为类型1 IoC（接口注入）、类型2 IoC（Setter 注入）和类型3 IoC（构造函数注入）。我觉得数字名称比较难记，这就是为什么我在这里使用了这些名称。
+
+使用 PicoContainer 进行构造函数注入
+我将首先展示如何使用一个轻量级容器 PicoContainer 进行注入。我首先选择这个主要是因为 Thoughtworks 公司的一些同事在 PicoContainer 的开发中非常活跃（是的，这算是一种公司内部的裙带关系）。
+
+PicoContainer 使用构造函数来决定如何将查找器实现注入到列表类中。为了使其工作，电影列表类需要声明一个构造函数，其中包含需要注入的所有内容。
+
+java
+Copy code
+class MovieLister...
+
+  public MovieLister(MovieFinder finder) {
+      this.finder = finder;       
+  }
+查找器本身也将由 PicoContainer 管理，因此容器将文件名注入到查找器中。
+
+java
+Copy code
+class ColonMovieFinder...
+
+  public ColonMovieFinder(String filename) {
+      this.filename = filename;
+  }
+然后，需要告诉 PicoContainer 将每个接口关联到哪个实现类，以及将哪个字符串注入到查找器中。
+
+java
+Copy code
+private MutablePicoContainer configureContainer() {
+    MutablePicoContainer pico = new DefaultPicoContainer();
+    Parameter[] finderParams =  {new ConstantParameter("movies1.txt")};
+    pico.registerComponentImplementation(MovieFinder.class, ColonMovieFinder.class, finderParams);
+    pico.registerComponentImplementation(MovieLister.class);
+    return pico;
+}
+这种配置代码通常设置在不同的类中。在我们的例子中，每个使用我的列表的朋友可能会在他们自己的设置类中编写适当的配置代码。当然，将这种配置信息保存在单独的配置文件中是很常见的。你可以编写一个类来读取配置文件并适当地设置容器。尽管 PicoContainer 本身不包含这种功能，但有一个密切相关的项目叫做 NanoContainer，它提供了适当的包装器，允许你使用 XML 配置文件。这样的一个 nano container 将解析 XML，然后配置底层的 pico container。该项目的哲学是将配置文件格式与底层机制分开。
+
+要使用容器，你可以编写如下代码。
+
+java
+Copy code
+public void testWithPico() {
+    MutablePicoContainer pico = configureContainer();
+    MovieLister lister = (MovieLister) pico.getComponentInstance(MovieLister.class);
+    Movie[] movies = lister.moviesDirectedBy("Sergio Leone");
+    assertEquals("Once Upon a Time in the West", movies[0].getTitle());
+}
+尽管在此示例中我使用了构造函数注入，但 PicoContainer 也支持 Setter 注入，尽管其开发人员更喜欢构造函数注入。
+
+使用 Spring 进行 Setter 注入
+Spring 框架是一个广泛应用于企业 Java 开发的框架。它包括事务、持久性框架、Web 应用程序开发和 JDBC 的抽象层。与 PicoContainer 一样，它支持构造函数和 Setter 注入，但其开发人员倾向于使用 Setter 注入 - 这使它成为这个例子的一个合适选择。
+
+为了使我的电影列表接受注入，我为该服务定义了一个设置方法。
+
+java
+Copy code
+class MovieLister...
+
+  private MovieFinder finder;
+public void setFinder(MovieFinder finder) {
+  this.finder = finder;
+}
+类似地，我为文件名定义了一个 Setter。
+
+java
+Copy code
+class ColonMovieFinder...
+
+  public void setFilename(String filename) {
+      this.filename = filename;
+  }
+第三步是为文件设置配置。Spring 支持通过 XML 文件和代码进行配置，但XML 是预期的配置方式。
+
+xml
+Copy code
+<beans>
+    <bean id="MovieLister" class="spring.MovieLister">
+        <property name="finder">
+            <ref local="MovieFinder"/>
+        </property>
+    </bean>
+    <bean id="MovieFinder" class="spring.ColonMovieFinder">
+        <property name="filename">
+            <value>movies1.txt</value>
+        </property>
+    </bean>
+</beans>
+测试看起来像这样。
+
+java
+Copy code
+public void testWithSpring() throws Exception {
+    ApplicationContext ctx = new FileSystemXmlApplicationContext("spring.xml");
+    MovieLister lister = (MovieLister) ctx.getBean("MovieLister");
+    Movie[] movies = lister.moviesDirectedBy("Sergio Leone");
+    assertEquals("Once Upon a Time in the West", movies[0].getTitle());
+}
+接口注入
+第三种注入技术是为注入定义和使用接口。Avalon 是使用此技术的框架的一个例子，在这里我稍后会详细讨论，但在这种情况下，我将其与一些简单的示例代码一起使用。
+
+使用此技术时，我首先定义一个接口，用于通过其执行注入。以下是将电影查找器注入到对象中的接口。
+
+java
+Copy code
+public interface InjectFinder {
+    void injectFinder(MovieFinder finder);
+}
+该接口将由提供 MovieFinder 接口的人来定义。任何想要使用查找器的类，如列表类，都需要实现它。
+
+java
+Copy code
+class MovieLister implements InjectFinder
+
+  public void injectFinder(MovieFinder finder) {
+      this.finder = finder;
+  }
+我使用类似的方法将文件名注入到查找器实现中。
+
+java
+Copy code
+public interface InjectFinderFilename {
+    void injectFilename (String filename);
+}
+class ColonMovieFinder implements MovieFinder, InjectFinderFilename...
+
+  public void injectFilename(String filename) {
+      this.filename = filename;
+  }
+然后，像往常一样，我需要一些配置代码来连接实现。为了简单起见，我将在代码中执行此操作。
+
+java
+Copy code
+class Tester...
+
+  private Container container;
+
+   private void configureContainer() {
+     container = new Container();
+     registerComponents();
+     registerInjectors();
+     container.start();
+  }
+这个配置有两个阶段，通过查找键注册组件的方式与其他示例相似。
+
+
+class Tester...
+
+  private void registerComponents() {
+    container.registerComponent("MovieLister", MovieLister.class);
+    container.registerComponent("MovieFinder", ColonMovieFinder.class);
+  }
+新的步骤是注册将注入依赖组件的注入器。每个注入接口都需要一些代码来注入依赖对象。在这里，我通过在容器中注册注入器对象来实现这一点。每个注入器对象实现了注入器接口。
+
+java
+Copy code
+class Tester...
+
+  private void registerInjectors() {
+    container.registerInjector(InjectFinder.class, container.lookup("MovieFinder"));
+    container.registerInjector(InjectFinderFilename.class, new FinderFilenameInjector());
+  }
+public interface Injector {
+  public void inject(Object target);
+
+}
+当依赖是为此容器编写的类时，使组件实现注入器接口是有道理的，就像我在这里使用电影查找器一样。对于通用类，如字符串，我在配置代码中使用了内部类。
+
+java
+Copy code
+class ColonMovieFinder implements Injector...
+
+  public void inject(Object target) {
+    ((InjectFinder) target).injectFinder(this);        
+  }
+class Tester...
+
+  public static class FinderFilenameInjector implements Injector {
+    public void inject(Object target) {
+      ((InjectFinderFilename)target).injectFilename("movies1.txt");      
+    }
+    }
+然后，测试使用容器。
+
+java
+Copy code
+class Tester…
+
+  public void testIface() {
+    configureContainer();
+    MovieLister lister = (MovieLister)container.lookup("MovieLister");
+    Movie[] movies = lister.moviesDirectedBy("Sergio Leone");
+    assertEquals("Once Upon a Time in the West", movies[0].getTitle());
+  }
+容器使用声明的注入接口来确定依赖关系，使用注入器来注入正确的依赖关系。
+
+使用服务定位器
+依赖注入的关键优势是它消除了 MovieLister 类对具体 MovieFinder 实现的依赖。这使得我可以将列表器提供给朋友，让他们为自己的环境插入合适的实现。注入并不是打破这种依赖关系的唯一方法，另一种方法是使用服务定位器。
+
+服务定位器的基本思想是有一个对象，知道如何获取应用程序可能需要的所有服务。因此，此应用程序的服务定位器将具有在需要时返回电影查找器的方法。当然，这只是稍微转移了负担，我们仍然必须将定位器传递给列表器，导致 Figure 3 中的依赖关系。
+
+Figure 3: 使用服务定位器的依赖关系
+
+在这种情况下，我将使用 ServiceLocator 作为单例注册表。然后，列表器可以在实例化时使用它来获取查找器。
+
+java
+Copy code
+class MovieLister...
+
+  MovieFinder finder = ServiceLocator.movieFinder();
+class ServiceLocator...
+
+  public static MovieFinder movieFinder() {
+      return soleInstance.movieFinder;
+  }
+  private static ServiceLocator soleInstance;
+  private MovieFinder movieFinder;
+与注入方法一样，我们必须配置服务定位器。在这里，我是通过代码执行的，但也可以使用从配置文件中读取适当数据的机制。
+
+java
+Copy code
+class Tester...
+
+  private void configure() {
+      ServiceLocator.load(new ServiceLocator(new ColonMovieFinder("movies1.txt")));
+  }
+class ServiceLocator...
+
+  public static void load(ServiceLocator arg) {
+      soleInstance = arg;
+  }
+
+  public ServiceLocator(MovieFinder movieFinder) {
+      this.movieFinder = movieFinder;
+  }
+这是测试代码。
+
+java
+Copy code
+class Tester...
+
+  public void testSimple() {
+      configure();
+      MovieLister lister = new MovieLister();
+      Movie[] movies = lister.moviesDirectedBy("Sergio Leone");
+      assertEquals("Once Upon a Time in the West", movies[0].getTitle());
+  }
+我经常听到这种服务定位器是一种坏东西的抱怨，因为它们不能进行测试，无法替代实现。当然，你可以设计得糟糕以陷入这种困境，但你不必这样做。在这种情况下，服务定位器实例只是一个简单的数据持有者。我可以轻松地使用我的服务的测试实现创建定位器。
+
+对于更复杂的定位器，我可以子类化服务定位器，并将该子类传递给注册表的类变量。我可以更改静态方法以调用实例上的方法，而不是直接访问实例变量。我可以通过使用线程特定存储提供特定于线程的定位器。所有这些都可以在不更改服务定位器的客户端的情况下完成。
+
+将其看作是服务定位器是注册表而不是单例的一种方法。单例提供了实现注册表的简单方式，但该实现决策很容易更改。```
+
+
+Copy code
+// 使用分离接口为定位器
+上述简单方法的一个问题是，MovieLister 依赖于完整的服务定位器类，尽管它只使用了一个服务。我们可以通过使用角色接口来减少这一点。这样，列表器可以声明它只需的接口的一部分，而不是使用完整的服务定位器接口。
+
+在这种情况下，列表器的提供者还将提供一个定位器接口，它需要获取查找器。
+
+public interface MovieFinderLocator {
+    public MovieFinder movieFinder();
+}
+
+然后，定位器需要实现此接口以提供对查找器的访问。
+
+```java
+MovieFinderLocator locator = ServiceLocator.locator();
+MovieFinder finder = locator.movieFinder();
+
+public static ServiceLocator locator() {
+     return soleInstance;
+}
+
+public MovieFinder movieFinder() {
+     return movieFinder;
+}
+
+private static ServiceLocator soleInstance;
+private MovieFinder movieFinder;
+注意，由于我们想要使用接口，我们不能再通过静态方法直接访问服务。我们必须使用该类来获取一个定位器实例，然后使用它来获取我们需要的东西。
+
+// 动态服务定位器
+上面的示例是静态的，即服务定位器类具有每个所需服务的方法。这不是唯一的方法，您还可以创建一个动态服务定位器，允许您将任何所需服务放入其中，并在运行时进行选择。
+
+在这种情况下，服务定位器使用映射而不是每个服务的字段，并提供通用方法来获取和加载服务。
+
+java
+Copy code
+class ServiceLocator...
+
+  private static ServiceLocator soleInstance;
+
+  public static void load(ServiceLocator arg) {
+      soleInstance = arg;
+  }
+
+  private Map services = new HashMap();
+
+  public static Object getService(String key){
+      return soleInstance.services.get(key);
+  }
+
+  public void loadService (String key, Object service) {
+      services.put(key, service);
+}
+配置涉及使用适当的键加载服务。
+
+java
+Copy code
+class Tester...
+
+  private void configure() {
+      ServiceLocator locator = new ServiceLocator();
+      locator.loadService("MovieFinder", new ColonMovieFinder("movies1.txt"));
+      ServiceLocator.load(locator);
+  }
+我使用相同的键字符串使用服务。
+
+java
+Copy code
+class MovieLister...
+
+  MovieFinder finder = (MovieFinder) ServiceLocator.getService("MovieFinder");
+总体而言，我不喜欢这种方法。尽管它确实很灵活，但它并不是很明确。我能找到达到服务的唯一方法是通过文本键。我更喜欢显式方法，因为通过查看接口定义更容易找到它们所在的位置。
+
+// 在Avalon中同时使用定位器和注入
+依赖注入和服务定位器并不一定是相互排斥的概念。同时使用两者的一个很好的例子是 Avalon 框架。Avalon 使用服务定位器，但使用注入告诉组件在哪里找到定位器。
+
+Berin Loritsch 给我发送了使用 Avalon 的简化版本来运行示例的示例。
+
+java
+Copy code
+public class MyMovieLister implements MovieLister, Serviceable {
+    private MovieFinder finder;
+
+    public void service( ServiceManager manager ) throws ServiceException {
+        finder = (MovieFinder)manager.lookup("finder");
+    } 
+}
+service 方法是接口注入的一个示例，允许容器将服务管理器注入到 MyMovieLister 中。服务管理器是服务定位器的一个示例。在此示例中，列表器没有将管理器存储在字段中，而是立即使用它来查找 finder，并将其存储。
+
+// 决定使用哪个选项
+到目前为止，我集中讨论了我如何看待这些模式及其变体。现在我可以开始讨论它们的利弊，以帮助确定何时以及何时使用它们。
+
+服务定位器与依赖注入
+基本选择是在服务定位器和依赖注入之间进行选择。首先要指出的是，这两种实现都提供了在幼稚示例中缺失的基本解耦 - 在这两种情况下，应用程序代码都独立于服务接口的具体实现。这两种模式之间的重要区别在于如何将该实现提供给应用程序类。通过服务定位器，应用程序类通过消息显式地请求它。通过注入，没有显式请求，服务出现在应用程序类中 - 因此是控制的反转。
+
+控制反转是框架的常见特征，但它是以一定代价的。很难理解，并在调试时遇到问题。因此，总体而言，除非我需要它，否则我宁愿避免它。这并不是说它是一件坏事，只是我认为它需要证明自己比更直接的替代方案更合理。
+
+关键差异在于，使用服务定位器的每个服务用户都与定位器存在依赖关系。定位器可以隐藏对其他实现的依赖关系，但您确实需要看到定位器。因此，定位器和注入器之间的决策取决于该依赖关系是否是问题。
+
+使用依赖注入可以帮助更容易地看到组件的依赖关系。使用依赖注入器，您只需查看注入机制（例如构造函数）即可看到依赖关系。使用服务定位器，您必须搜索调用定位器的源代码。具有查找引用功能的现代 IDE 使这变得更容易，但仍然不如查看构造函数或设置方法容易。
+
+这在很大程度上取决于服务的用户性质。如果您正在构建使用服务的各种类的应用程序，那么应用程序类到定位器的依赖关系不是什么大不了的事。在我将电影列表器提供给朋友的示例中，使用服务定位器效果很好。他们所需要做的就是配置定位器以连接正确的服务实现，无论是通过一些配置代码还是通过配置文件。在这种情况下，我不认为注入器的反转提供了令人信服的任何东西。
+
+差异在于，如果列表器是我提供给其他人编写的应用程序的组件，那么我对我的客户将要使用的服务定位器的API了解不多。每个客户可能都有自己不兼容的服务定位器。通过使用分离的接口，我可以解决其中一些问题。每个客户都可以编写一个适配器，将我的接口与他们的定位器匹配，但无论如何，我仍然需要看到第一个定位器以查找我的特定接口。一旦适配器出现，直接连接到定位器的简单性就开始减弱。
+
+由于使用注入时，组件到注入器没有依赖关系，因此组件在配置后无法从注入器获取更多服务。
+
+人们倾向于更喜欢依赖注入的一个常见原因是它使测试更容易。这里的要点是，为了进行测试，您需要轻松地将真实服务实现替换为存根或模拟。但实际上，依赖注入和服务定位器之间没有真正的区别：两者都非常适合存根。我怀疑这种观察来自于人们在项目中没有努力确保他们的服务定位器可以轻松替换。这就是持续测试有助于，如果您不能轻松地为测试存根服务，那么这意味着您的设计存在严重问题。
+
+当然，使用非常侵入性的组件环境时（例如Java的EJB框架），测试问题会加剧。我认为这些类型的框架应该最小化对应用程序代码的影响，特别是不应该做减缓编辑执行周期的事情。使用插件替代重量级组件对帮助这一过程非常有益，这对于实践如测试驱动开发至关重要。
+
+因此，主要问题是写代码，期望在编写者控制之外的应用程序中使用。在这些情况下，即使对服务定位器进行最小的假设也是一个问题。
+
+构造函数与Setter注入
+对于服务组合，您总是必须有一些约定，以便将事物连接在一起。注入的优势主要在于它需要非常简单的约定 - 至少对于构造函数和setter注入而言如此。您不必在组件中执行任何奇怪的操作，并且对于注入器来说，配置一切都相当简单。
+
+接口注入更为侵入性，因为您必须编写大量接口才能将一切搞清楚。对于容器所需的一小组接口，例如Avalon的方法，这还不错。但是为了组装组件和依赖关系，这是很多工作，这就是为什么当前的轻量级容器选择setter和构造函数注入的原因。
+
+选择Setter和构造函数注入之间的选择很有趣，因为它反映了面向对象编程的更一般的问题 - 您应该在构造函数中填充字段，还是使用setter填充字段。
+
+我长期以来的默认选择是尽可能在构造函数中创建有效的对象。这些建议可以追溯到Kent Beck的《Smalltalk Best Practice Patterns: Constructor Method and Constructor Parameter Method》。带参数的构造函数在明显的地方清晰地说明了在哪里创建有效对象的含义。如果有多种方法可以做到这一点，请创建显示不同组合的多个构造函数。
+
+
+// 另一个使用构造函数初始化的优势是，它允许您清晰地隐藏任何不可变字段，方法是简单地不提供setter。我认为这很重要 - 如果某些东西不应更改，那么没有setter就很好地传达了这一点。如果在初始化时使用setter，这可能会变得很麻烦。（实际上在这些情况下，我更喜欢避免通常的设置约定，我宁愿使用像initFoo这样的方法，以强调这只是在出生时才应该做的事情。）
+
+// 但在任何情况下都存在例外。如果构造函数参数很多，事物可能看起来很混乱，特别是在没有关键字参数的语言中。的确，长构造函数通常是对象过于繁忙的迹象，应该拆分，但也有需要的情况。
+
+// 如果有多种构建有效对象的方法，则通过构造函数很难显示这一点，因为构造函数只能在参数的数量和类型上变化。这时Factory Methods就派上用场了，这些方法可以使用私有构造函数和setter的组合来实现它们的工作。经典Factory Methods用于组件装配的问题在于它们通常被视为静态方法，而接口上不能有静态方法。您可以创建一个工厂类，但那只是另一个服务实例。工厂服务通常是一个不错的策略，但仍然必须使用这里介绍的技术之一来实例化工厂。
+
+// 如果构造函数有简单的参数，如字符串，那么构造函数也会受到影响。通过setter注入，您可以为每个setter指定一个名称，以指示字符串应该执行的操作。而构造函数则仅依赖于位置，这更难以跟踪。
+
+// 如果有多个构造函数和继承，情况可能变得尤其尴尬。为了初始化所有内容，您必须提供构造函数以转发到每个超类构造函数，同时添加您自己的参数。这可能导致构造函数的爆炸性增加。
+
+// 尽管存在缺点，我的偏好是从构造函数注入开始，但一旦我上面概述的问题开始变得成问题，就准备切换到setter注入。
+
+// 这个问题已经在提供依赖注入器作为其框架一部分的各个团队之间引起了很多争论。然而，似乎大多数构建这些框架的人已经意识到支持两种机制是重要的，即使有一种偏好。
+
+// 代码还是配置文件
+// 另一个经常混淆的问题是是使用配置文件还是使用API上的代码来连接服务。对于大多数可能在许多地方部署的应用程序，通常最有意义的是使用单独的配置文件。几乎所有情况下，这将是一个XML文件，这是有道理的。但是，在某些情况下，使用程序代码进行组装可能更容易。一个案例是您有一个简单的应用程序，没有太多的部署变化。在这种情况下，一些代码可能比一个单独的XML文件更清晰。
+
+// 一个相反的情况是组装相当复杂，涉及有条件的步骤。一旦接近编程语言，XML就开始崩溃，最好使用具有编写清晰程序所需所有语法的真正语言。然后，编写一个构建器类来执行组装。如果有不同的构建场景，您可以提供多个构建器类，并使用一个简单的配置文件来选择它们之间。
+
+// 我经常认为人们过于渴望定义配置文件。通常，编程语言提供了一种简单而强大的配置机制。现代语言可以轻松编译小型汇编程序，用于为较大的系统组装插件。如果编译很麻烦，那么脚本语言也可以很好地工作。
+
+// 通常有人说配置文件不应该使用编程语言，因为它们需要由非程序员编辑。但这种情况有多少？人们真的指望非程序员修改复杂服务器端应用程序的事务隔离级别吗？非语言配置文件只在它们简单时才有效。如果它们变得复杂，那么是时候考虑使用合适的编程语言了。
+
+// 目前在Java世界中，我们看到的一个问题是配置文件的混乱，其中每个组件都有自己的配置文件，与其他所有组件的配置文件都不同。如果使用了这些组件的十几个，您很容易就会有十几个需要保持同步的配置文件。
+
+// 我在这里的建议是始终提供一种通过编程接口轻松进行所有配置的方法，然后将单独的配置文件视为一个可选功能。您可以轻松构建配置文件处理以使用编程接口。如果您正在编写组件，那么就由用户决定是使用编程接口、您的配置文件格式还是编写自己的自定义配置文件格式并将其与编程接口绑定。
+
+// 将配置与使用分开
+// 在所有这些中最重要的问题是确保服务的配置与其使用分开。实际上，这是一个基本的设计原则，与接口与实现的分离一样。在面向对象程序中，当有条件的逻辑决定要实例化哪个类时，未来对该条件的评估是通过多态而不是通过重复的条件代码来完成的。
+
+// 如果此分离在单个代码库中有用，那么在使用诸如组件和服务等外部元素时，这一点尤为重要。首先要考虑的问题是是否希望将实现类的选择推迟到特定部署。如果是这样，您需要使用某种插件的实现。一旦您使用插件，就必须确保插件的组装与应用程序的其余部分分开，以便您可以轻松地为不同的部署替代不同的配置。如何实现这一点是次要的。此配置机制可以配置服务定位器，或使用注入直接配置对象。
+
+// 一些进一步的问题
+// 在本文中，我集中讨论了使用依赖注入和服务定位器进行服务配置的基本问题。还有一些其他问题，也值得关注，但我还没有时间深入研究。特别是有生命周期行为的问题。一些组件具有不同的生命周期事件：例如停止和启动。另一个问题是在这些容器中使用面向方面的想法的兴趣日益增长。虽然我现在还没有考虑到这篇文章中，但我希望通过扩展这篇文章或写另一篇文章来更多地讨论这个问题。
+
+// 您可以通过查看专门致力于轻量级容器的网站，了解有关这些想法的更多信息。从picocontainer和spring网站上冲浪将引导您进入更多关于这些问题的讨论，并开始解决一些进一步问题。
+
+// 总结思想
+// 所有这些轻量级容器的当前潮流都有一个共同的基本模式 - 依赖注入器模式。依赖注入是服务定位器的一种有用的替代方法。在构建应用程序类时，这两者大致相等，但我认为由于其更直观的行为，服务定位器具有轻微的优势。然而，如果要构建用于多个应用程序的类，那么依赖注入是更好的选择。
+
+// 如果使用依赖注入，有多种样式可供选择。我建议您首先使用构造函数注入，除非遇到上述方法的特定问题，否则切换到setter注入。如果您正在选择构建或获取一个容器，那么寻找一个支持构造函数和setter注入的容器。
+
+// 在服务定位器和依赖注入之间的选择不如在应用程序内部使用服务的配置与使用的原则重要。
+
+// 致谢
+// 对于帮助我撰写这篇文章的许多人，我表示诚挚的感谢。Rod Johnson，Paul Hammant，Joe Walnes，Aslak Hellesøy，Jon Tirsén和Bill Caputo帮助我理解这些概念，并评论了本文的初稿。Berin Loritsch和Hamilton Verissimo de Oliveira在Avalon的适应性方面提供了一些建议。Dave W Smith坚持不懈地问我关于我的初始接口注入配置代码的问题，因此让我面对这是愚蠢的事实。Gerry Lowry给我发送
