@@ -175,6 +175,7 @@ extension Resolver.Name {
 
 swift
 Copy code
+// 注册了同样的抽象接口, 但是通过了名称进行了区分. 
 register(name: .fred) { XYZServiceFred() as XYZServiceProtocol }
 register(name: .barney) { XYZServiceBarney() as XYZServiceProtocol }
 一旦定义并注册，名称可以在解析过程中使用，以选择您所需的服务版本。

@@ -47,6 +47,7 @@ class ResolverBasicTests: XCTestCase {
 
     func testRegistrationAndResolutionChain() {
         resolver.register { XYZSessionService() }
+        // 直接, 就使用 self.resolver.optional() 来当做参数的返回值了.
         resolver.register { XYZService( self.resolver.optional() ) }
         let service: XYZService? = resolver.optional()
         XCTAssertNotNil(service)
@@ -56,6 +57,7 @@ class ResolverBasicTests: XCTestCase {
     func testRegistrationOverwriting() {
         resolver.register() { XYZNameService("Fred") }
         resolver.register() { XYZNameService("Barney") }
+        // 注册了同样的一个类型, 会产生覆盖的问题.
         let service: XYZNameService? = resolver.optional()
         XCTAssertNotNil(service)
         XCTAssert(service?.name == "Barney")
@@ -72,6 +74,7 @@ class ResolverBasicTests: XCTestCase {
     }
 
     func testRegistrationAndResolutionProperties() {
+        // 可以注册一个带有具体的构造过程的工厂方法. 
         resolver.register { XYZSessionService() }
             .resolveProperties { (r, s) in
                 s.name = "updated"

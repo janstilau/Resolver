@@ -27,6 +27,7 @@ class ResolverArgumentTests: XCTestCase {
             XCTAssert(arg.get())
             return XYZArgumentService(condition: arg.get())
         }
+        // 注册的是一个带有参数的, 那么就可以通过 args 传递参数了
         let service: XYZArgumentService? = resolver.optional(args: true)
         XCTAssertNotNil(service)
         XCTAssert(service?.condition == true)
@@ -70,7 +71,7 @@ class ResolverArgumentTests: XCTestCase {
                 XCTAssert(string == "Fred")
                 s.condition = condition
                 s.string = string
-        }
+            }
         let service: XYZArgumentService? = resolver.optional(args: ["condition": true, "name": "Fred"])
         XCTAssertNotNil(service)
         XCTAssert(service?.condition == true)
