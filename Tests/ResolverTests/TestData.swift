@@ -9,6 +9,7 @@
 import Foundation
 import Resolver
 
+// 通过 extension 的方式, 也就是业务方, 主动地实现 ResolverRegistering, 来完成 registerAllServices 的调用. 
 extension Resolver: ResolverRegistering {
     public static func registerAllServices() {
         register { XYZSessionService() }

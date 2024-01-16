@@ -34,6 +34,8 @@ public final class Resolver {
     public static var main: Resolver = Resolver()
     /// Default registry used by the static Resolution functions and by the Resolving protocol.
     public static var root: Resolver = main
+    
+    
     /// Default scope applied when registering new objects.
     public static var defaultScope: ResolverScope = .graph
     /// Internal scope cache used for .scope(.container)
@@ -143,6 +145,7 @@ public final class Resolver {
                                          factory: @escaping ResolverFactoryArgumentsN<Service>) -> ResolverOptions<Service> {
         return main.register(type, name: name, factory: factory)
     }
+    
     
     // 上面三个是 static, 下面的是真正的实现.
     // ResolverFactoryAnyArguments 都是用的这个工厂方法.
@@ -456,6 +459,7 @@ extension Resolver {
 
 private var registrationNeeded: Bool = true
 
+// 在适当的时机, 调用该方法, 来完成依赖关系的 lazy 初始化.
 @inline(__always)
 private func registrationCheck() {
     guard registrationNeeded else {
@@ -485,10 +489,15 @@ public typealias ResolverFactoryMutator<Service> = (_ resolver: Resolver, _ serv
 public typealias ResolverFactoryMutatorArgumentsN<Service> = (_ resolver: Resolver, _ service: Service, _ args: Resolver.Args) -> Void
 
 /// A ResolverOptions instance is returned by a registration function in order to allow additional configuration. (e.g. scopes, etc.)
+// 这就是一个包装体, 经常出现这样的设计. 主要是为了链式编程的
+// 就如同 Alamofire 里面, 返回一个 Request 对象一样. 第一个 request 方法, 返回了一个 Request 对象, 然后所有的后续操作, 都是在操作这个对象.
+// 然后还是返回 self, 就是所有的操作, 都是在修改 Request 对象的内部数据. 或者, 是触发了全局的状态改变, 就如同这里的 registration.resolver?.register.
+// 专门写这样的一个类, 来进行链式调用, 是很常见的一种情况.
 public struct ResolverOptions<Service> {
     
     // MARK: - Parameters
     
+    // 所有的数据项, 都在这里. 各种函数都是为了修改这里状态. 每次都返回 struct, 虽然都是在复制数据, 但是对于 registration 是同样的位置.
     public var registration: ResolverRegistration<Service>
     
     // MARK: - Fuctionality
@@ -506,8 +515,11 @@ public struct ResolverOptions<Service> {
                                      name: Resolver.Name? = nil) -> ResolverOptions<Service> {
         // implements 的作用, 其实就是, 当 resolve 需要的是一个 Protocol.Type 的时候, 使用当前的 Service 来进行生成.
         // 这样就实现了, Imp 注册给了上层的抽象接口的效果了.
+        // register 还是使用的最原始的做法, 然后传递一个工厂方法的 block 进去. 因为这里已经明确的知道了, Service.self 已经注册了, 所以直接使用 resolve 函数.
         registration.resolver?.register(type.self, name: name) {
-            r, args in r.resolve(Service.self, args: args) as? Protocol }
+            r, args in
+            r.resolve(Service.self, args: args) as? Protocol
+        }
         return self
     }
     
@@ -517,6 +529,7 @@ public struct ResolverOptions<Service> {
     ///
     /// - returns: ResolverOptions instance that allows further customization of registered Service.
     ///
+    // 不需要参数的初始化器.
     @discardableResult
     public func resolveProperties(_ block: @escaping ResolverFactoryMutator<Service>) -> ResolverOptions<Service> {
         registration.update { existingFactory in
@@ -538,6 +551,7 @@ public struct ResolverOptions<Service> {
     ///
     /// - returns: ResolverOptions instance that allows further customization of registered Service.
     ///
+    // 需要参数的初始化器.
     @discardableResult
     public func resolveProperties(_ block: @escaping ResolverFactoryMutatorArgumentsN<Service>) -> ResolverOptions<Service> {
         registration.update { existingFactory in
@@ -588,6 +602,7 @@ public final class ResolverRegistration<Service> {
     }
     
     /// Called by Resolver containers to resolve a registration. Depending on scope may return a previously cached instance.
+    // 真正的生成 Service 的地方, 又包装了一层, 而不是直接拿出 factory 进行的调用. 这样做的主要目的就是为了缓存. 
     public final func resolve(resolver: Resolver, args: Any?) -> Service? {
         return scope.resolve(registration: self, resolver: resolver, args: args)
     }
@@ -598,6 +613,8 @@ public final class ResolverRegistration<Service> {
     }
     
     /// Called by ResolverOptions to wrap a given service factory with new behavior.
+    // modifier 是传入一个 ResolverFactoryAnyArguments, 返回一个 ResolverFactoryAnyArguments, 而 self.factory 也是一个 ResolverFactoryAnyArguments
+    // 这个 update(factory 不是给外界使用的.
     public final func update(factory modifier: (_ factory: @escaping ResolverFactoryAnyArguments<Service>) -> ResolverFactoryAnyArguments<Service>) {
         // 嵌套组合, 外界可以无限的使用 update.
         self.factory = modifier(factory)
